@@ -579,7 +579,7 @@ def update_adv_closed(df, originator_list_file, updated=False):
         root.destroy()
         excel_formatter(originator_list, originator_list_file, 'Sheet1')
 
-    return update_adv_closed(df, True)
+    return update_adv_closed(df, originator_list_file, True)
 
 
 # Function to prompt user with Tkinter
@@ -599,6 +599,7 @@ def prompt_adv_values(unique_originators):
             originator = entry[0]
             adv_value = entry[1].get()
             new_entries[originator] = adv_value
+        root.quit()
         root.destroy()
 
     # Create labels and dropdowns for each unique unmatched originator
@@ -637,8 +638,15 @@ if __name__ == "__main__":
     triangle_closed = clean_triangle(pd.read_excel(adv_out_file, sheet_name=triangle_closed_sheet))
 
     # Read, cleans, and reformats Salesforce data to a Pandas dataframe
-    sf_active = clean_salesforce(pd.read_excel(found_files[1]))
-    sf_closed = clean_salesforce(pd.read_excel(found_files[2]))
+    try:
+        sf_active = clean_salesforce(pd.read_excel(found_files[1]))
+    except ValueError:
+        sf_active = clean_salesforce(pd.DataFrame(pd.read_html(found_files[1])[0]))
+
+    try:
+        sf_closed = clean_salesforce(pd.read_excel(found_files[2]))
+    except ValueError:
+        sf_closed = clean_salesforce(pd.DataFrame(pd.read_html(found_files[2])[0]))
 
     # Read, clean, and NetSuite data as Pandas dataframes and returns cleaned data frame
     ns_active = clean_netsuite(pd.read_excel(found_files[3]))
@@ -657,7 +665,12 @@ if __name__ == "__main__":
             ], False
     )
 
-    hubspot_df = clean_hubspot(pd.read_excel(found_files[6]))
+    try:
+        hubspot_df = pd.read_excel(found_files[6])
+    except ValueError:
+        hubspot_df = pd.read_csv(found_files[6])
+
+    hubspot_df = clean_hubspot(hubspot_df)
     hubspot_active = hubspot_df[~(hubspot_df['Stage (adjusted)'] == 'Closed Lost')]
     hubspot_closed = hubspot_df[hubspot_df['Stage (adjusted)'] == 'Closed Lost']
 
@@ -696,12 +709,20 @@ if __name__ == "__main__":
     adv_closed = all_closed[all_closed['Service Line Group'].isin(['ADV', 'ADV (Advisory)'])]
 
     adv_closed = update_adv_closed(adv_closed, found_files[8])
-
-    out_active = all_active[all_active['Service Line Group'].isin(['OUT', 'BOutsourced Services'])]
-    out_closed = all_closed[all_closed['Service Line Group'].isin(['OUT', 'BOutsourced Services'])]
+    originators_list_updated_df = pd.read_excel(found_files[8])
 
     # Create an ExcelWriter object and specify the file path
     with pd.ExcelWriter('ADV Pipeline Test.xlsx', engine='xlsxwriter') as writer:
         # Write each dataframe to a different sheet
         adv_active.to_excel(writer, sheet_name='ADV Active', index=False)
         adv_closed.to_excel(writer, sheet_name='ADV Closed', index=False)
+        originators_list_updated_df.to_excel(writer, sheet_name='Originators List', index=False)
+
+        workbook = writer.book
+        worksheet = writer.sheets['Originators List']
+        worksheet.hide()
+
+    out_active = all_active[all_active['Service Line Group'].isin(['OUT', 'BOutsourced Services'])]
+    out_closed = all_closed[all_closed['Service Line Group'].isin(['OUT', 'BOutsourced Services'])]
+
+
