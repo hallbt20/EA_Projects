@@ -711,6 +711,23 @@ if __name__ == "__main__":
     adv_closed = update_adv_closed(adv_closed, found_files[8])
     originators_list_updated_df = pd.read_excel(found_files[8])
 
+    # Convert 'Stage (adjusted)' to a categorical type with the specified order
+    adv_active.loc[:, 'Stage (adjusted)'] = pd.Categorical(
+        adv_active['Stage (adjusted)'],
+        categories=['Proposal', 'Qualified', 'Unqualified', 'Suspect'],
+        ordered=True
+    )
+
+    adv_closed.loc[:, 'Stage (adjusted)'] = pd.Categorical(
+        adv_closed['Stage (adjusted)'],
+        categories=['Closed Won', 'Closed Lost'],
+        ordered=True
+    )
+
+    # Sort the dataframe
+    adv_active = adv_active.sort_values(by=['Stage (adjusted)', 'Created Date'], ascending=[True, False])
+    adv_closed = adv_closed.sort_values(by=['Stage (adjusted)', 'Close Date'], ascending=[False, False])
+
     # Create an ExcelWriter object and specify the file path
     with pd.ExcelWriter('ADV Pipeline Test.xlsx', engine='xlsxwriter') as writer:
         # Write each dataframe to a different sheet

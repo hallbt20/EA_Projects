@@ -244,3 +244,69 @@ Sub CreateAdditionalPivotTable()
 
 End Sub
 
+Sub HideColumns()
+    Dim ws_active As Worksheet
+    Dim ws_closed As Worksheet
+    Set ws_active = ThisWorkbook.Sheets("ADV Active")
+    Set ws_closed = ThisWorkbook.Sheets("ADV Closed")
+    
+    ' Hide columns A through D
+    ws_active.Columns("A:D").Hidden = True
+    ws_closed.Columns("A:D").Hidden = True
+    
+    ' Hide column N on ADV Closed
+    ws_closed.Columns("N").Hidden = True
+    
+    ' Hide columns after Recurrence
+    ws_active.Columns("U:AC").Hidden = True
+    ws_closed.Columns("V:AD").Hidden = True
+    
+    ' Allow wrapping text in the first row
+    Dim col As Range
+    For Each col In ws_active.Range("A1:T1").Columns
+        col.WrapText = True
+        col.HorizontalAlignment = xlCenter
+        col.VerticalAlignment = xlCenter
+    Next col
+    
+    For Each col In ws_closed.Range("A1:U1").Columns
+        col.WrapText = True
+        col.HorizontalAlignment = xlCenter
+        col.VerticalAlignment = xlCenter
+    Next col
+    
+    ' Set the width of columns
+    ws_active.Columns("E").ColumnWidth = 14
+    ws_closed.Columns("E").ColumnWidth = 14
+    ws_active.Columns("F").ColumnWidth = 36
+    ws_closed.Columns("F").ColumnWidth = 36
+    ws_active.Columns("G").ColumnWidth = 36
+    ws_closed.Columns("G").ColumnWidth = 36
+    
+    ' Format columns H and I as currency
+    ws_active.Columns("H").NumberFormat = "$#,##0.00"
+    ws_closed.Columns("H").NumberFormat = "$#,##0.00"
+    ws_active.Columns("I").NumberFormat = "$#,##0.00"
+    ws_closed.Columns("I").NumberFormat = "$#,##0.00"
+    
+    ' Format column J to show only dates
+    ws_active.Columns("J").NumberFormat = "mm/dd/yyyy"
+    ws_closed.Columns("J").NumberFormat = "mm/dd/yyyy"
+    ws_active.Columns("K").NumberFormat = "mm/dd/yyyy"
+    ws_closed.Columns("K").NumberFormat = "mm/dd/yyyy"
+    
+    ' Set the width of columns
+    ws_active.Columns("M").ColumnWidth = 27
+    ws_closed.Columns("M").ColumnWidth = 27
+    ws_active.Columns("N").ColumnWidth = 27
+    ws_active.Columns("O").ColumnWidth = 35
+    ws_closed.Columns("O").ColumnWidth = 35
+    ws_active.Columns("P").ColumnWidth = 38
+    ws_closed.Columns("Q").ColumnWidth = 38
+    ws_active.Columns("R").ColumnWidth = 30
+    ws_closed.Columns("S").ColumnWidth = 30
+    ws_active.Columns("S").ColumnWidth = 20
+    ws_closed.Columns("T").ColumnWidth = 20
+    
+
+End Sub
