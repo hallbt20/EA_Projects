@@ -1,4 +1,10 @@
 Attribute VB_Name = "Module1"
+Sub RunAll()
+    Call CreatePivotTables
+    Call CreateAdditionalPivotTable
+    Call HideColumns
+End Sub
+
 Sub CreatePivotTables()
     Dim wsActive As Worksheet
     Dim wsClosed As Worksheet
@@ -212,7 +218,7 @@ Sub CreateAdditionalPivotTable()
         End With
 
         ' Rows
-        With .PivotFields("Originator in ADV?")
+        With .PivotFields("ADV?")
             .Orientation = xlRowField
             .Position = 1
         End With
