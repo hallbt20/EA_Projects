@@ -211,10 +211,11 @@ Sub CreateAdditionalPivotTable()
 
     ' Set up the PivotTable fields
     With pt
-        ' Filter
+        ' Filter by Stage (adjusted)
         With .PivotFields("Stage (adjusted)")
             .Orientation = xlPageField
             .Position = 1
+            .CurrentPage = "Closed Won" ' Apply filter for "Closed Won"
         End With
 
         ' Rows
@@ -243,12 +244,23 @@ Sub CreateAdditionalPivotTable()
             .Caption = "First Year Fees "
             .NumberFormat = "$#,##0.00" ' Format as monetary with comma separators
         End With
+
+        ' Sort by First Year Fees descending
+        With .PivotFields("First Year Fees")
+            .AutoSort xlDescending, "Sum of First Year Fees"
+        End With
+        
+        ' Sort Opportunity Originator by First Year Fees descending
+        With .PivotFields("ADV?")
+            .AutoSort xlDescending, "Sum of First Year Fees"
+        End With
     End With
 
     ' Autofit columns in the Originations (Wins) sheet
     wsOriginations.Columns.AutoFit
 
 End Sub
+
 
 Sub HideColumns()
     Dim ws_active As Worksheet
@@ -260,12 +272,9 @@ Sub HideColumns()
     ws_active.Columns("A:D").Hidden = True
     ws_closed.Columns("A:D").Hidden = True
     
-    ' Hide column N on ADV Closed
-    ws_closed.Columns("N").Hidden = True
-    
     ' Hide columns after Recurrence
     ws_active.Columns("U:AC").Hidden = True
-    ws_closed.Columns("V:AD").Hidden = True
+    ws_closed.Columns("U:AD").Hidden = True
     
     ' Allow wrapping text in the first row
     Dim col As Range
@@ -304,15 +313,24 @@ Sub HideColumns()
     ' Set the width of columns
     ws_active.Columns("M").ColumnWidth = 27
     ws_closed.Columns("M").ColumnWidth = 27
+    
     ws_active.Columns("N").ColumnWidth = 27
+    ws_closed.Columns("N").ColumnWidth = 27
+    
     ws_active.Columns("O").ColumnWidth = 35
     ws_closed.Columns("O").ColumnWidth = 35
+    
     ws_active.Columns("P").ColumnWidth = 38
-    ws_closed.Columns("Q").ColumnWidth = 38
+    ws_closed.Columns("P").ColumnWidth = 38
+    
+    ws_active.Columns("Q").ColumnWidth = 18
+    ws_closed.Columns("Q").ColumnWidth = 18
+    
     ws_active.Columns("R").ColumnWidth = 30
+    ws_closed.Columns("R").ColumnWidth = 30
+    
     ws_closed.Columns("S").ColumnWidth = 30
-    ws_active.Columns("S").ColumnWidth = 20
-    ws_closed.Columns("T").ColumnWidth = 20
+    ws_active.Columns("S").ColumnWidth = 30
     
 
 End Sub
