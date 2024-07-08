@@ -63,6 +63,45 @@ def start_window_adv():
     return file_path_vars
 
 
+def start_window_out():
+    folder_path = filedialog.askdirectory(title="Select a folder")
+    if not folder_path:
+        messagebox.showerror("Error", "No folder selected.")
+        return None
+
+    files_to_find = {
+        "sf_active_file": "Salesforce Active",
+        "sf_closed_file": "Salesforce Closed",
+        "ns_active_file": "Netsuite Active",
+        "ns_closed_file": "Netsuite Closed",
+        "great_lakes_file": "EAG GL",
+        'originators_list': 'Originators List',
+        "eag_gc_oit_file": "EAG GC OIT",
+        "hubspot_file": "hubspot",
+        "adv_out_file": "ADV OUT Pipeline"
+    }
+
+    found_files = {key: find_file(folder_path, start) for key, start in files_to_find.items()}
+
+    missing_files = {key: value for key, value in found_files.items() if value is None}
+
+    if missing_files:
+        messagebox.showinfo("Missing Files", "Some files were not found. Please locate the missing files.")
+        found_files.update(browse_for_file(missing_files))
+
+    file_path_vars = [
+        found_files['sf_active_file'],
+        found_files['sf_closed_file'],
+        found_files['ns_active_file'],
+        found_files['ns_closed_file'],
+        found_files['great_lakes_file'],
+        found_files['originators_list'],
+        found_files['eag_gc_oit_file']
+    ]
+
+    return file_path_vars
+
+
 def start_window():
     folder_path = filedialog.askdirectory(title="Select a folder")
     if not folder_path:
@@ -96,9 +135,9 @@ def start_window():
         found_files['ns_closed_file'],
         found_files['great_lakes_file'],
         found_files['originators_list'],
-        found_files['adv_out_file'],
         found_files['eag_gc_oit_file'],
-        found_files['hubspot_file']
+        found_files['hubspot_file'],
+        found_files['adv_out_file']
     ]
 
     return file_path_vars
@@ -274,6 +313,7 @@ def clean_great_lakes(df, active=True):
     cols_to_initialize = [
         'Opportunity Team', 'Contract Duration', 'Last Activity', 'Next Step', 'Next Step Due Date', 'Contact',
         'Client Code', 'Primary Campaign Source: Campaign Name', 'Originator Service Line', 'Opp Leader Service Line',
+        'Opportunity ID'
     ]
 
     for col in cols_to_initialize:
@@ -307,6 +347,178 @@ def clean_great_lakes(df, active=True):
         df = df[~df['Close Date'].isna() & (df['Close Date'] >= pd.Timestamp('2023-08-01'))]
 
     df = df[df['Opportunity Originator'] != 'Old Old']
+
+    return dataframe_ordering(df)
+
+
+def clean_pnt(df, active=True):
+    df = df.copy()
+    df['Data Source'] = 'PNT Connectwise'
+    df['Service Line Group (EA)'] = 'OUT'
+
+    cols_to_initialize = [
+        'Age', 'Opportunity Team', 'Account Name: Industry', 'Office Location Client Assigned to', 'Recurrence',
+        'Contract Duration', 'Last Activity', 'Next Step', 'Next Step Due Date',
+        'Client Code', 'Primary Campaign Source: Campaign Name', 'Originator Service Line',
+        'Opp Leader Service Line', 'Contact'
+    ]
+
+    for col in cols_to_initialize:
+        df[col] = None
+
+    if active:
+        df['Stage (adjusted)'] = df['Sales_Stage']
+    else:
+        df['Stage (adjusted)'] = df['Sales_Stage'].apply(lambda x: 'Closed Won' if 'Won' else 'Closed Lost')
+
+    df['Total Contract Value (EA\'s portion)'] = df['Total_Revenue'] - df['Product_Cost']
+    df.drop(columns=['Total_Revenue', 'Product_Cost'], inplace=True)
+
+    df['First Year Fees (EA\'s portion)'] = df['Total Contract Value (EA\'s portion)']
+
+    df.rename(columns={
+        'RecID': 'Opportunity ID',
+        'Sales_Stage': 'Stage',
+        'Company_Name': 'Account Name: Account Name',
+        'Opp_Name': 'Opportunity Name',
+        'Created_Date': 'Created Date',
+        'Expected_Close_Date': 'Close Date',
+        'Originator': 'Opportunity Originator',
+        'Opp_Leader': 'Opportunity Leader',
+        'Service_Area': 'Service Lines',
+        'Service_Type': 'Type',
+    }, inplace=True)
+
+    return dataframe_ordering(df)
+
+
+def clean_hubspot(df):
+    df['Data Source'] = 'Hubspot'
+    df['Service Line Group (EA)'] = 'OUT'
+
+    cols_to_initialize = [
+        'Created Date', 'Age', 'Opportunity Originator', 'Service Lines', 'Office Location Client Assigned to',
+        'Recurrence', 'Contract Duration', 'Last Activity', 'Next Step', 'Next Step Due Date', 'Client Code',
+        'Primary Campaign Source: Campaign Name', 'Originator Service Line', 'Opp Leader Service Line', 'Contact'
+    ]
+
+    for col in cols_to_initialize:
+        df[col] = None
+
+    # Filter dataframe where Deal Stage is only one of the following
+    df = df[df['Deal Stage'].isin([
+        'Inquiry',
+        'Intro Call Scheduled',
+        'BD Action Required',
+        'Consideration / Materials Sent',
+        'EA Incoming Leads',
+        'Assessment',
+        'Engagement Letter Sent',
+        'Dead Leads Inquiries',
+        'Closed lost'
+    ])]
+
+    df = df[df['EA Opportunity'].isna()].drop(columns=['EA Opportunity'])
+
+    df = df[df['Service Team'] == 'Startup']
+
+    df['Stage (adjusted)'] = df['Deal Stage'].apply(
+        lambda x: 'Closed Lost' if x in ['Dead Leads Inquiries', 'Closed lost'] else
+        'Proposal' if x == 'Engagement Letter Sent' else
+        'Qualified' if x in ['Consideration / Materials Sent', 'BD Action Required'] else
+        'Unqualified' if x in ['Inquiry', 'Intro Call Scheduled', 'EA Incoming Leads', 'Assessment'] else
+        'None'
+    )
+
+    df = df[~(df['Deal owner'] == 'John Delalio')]
+
+    df.drop(columns=['Type'], inplace=True)
+
+    df.rename(columns={
+        'Record ID': 'Opportunity ID',
+        'Deal Stage': 'Stage',
+        'Deal Name': 'Account Name: Account Name',
+        'Service Team': 'Opportunity Name',
+        'Amount': 'First Year Fees (EA\'s portion)',
+        'Amount in company currency': 'Total Contract Value (EA\'s portion)',
+        'Deal owner': 'Opportunity Leader',
+        'Source/Referral': 'Opportunity Team',
+        'Deal Type': 'Type',
+        'Pipeline': 'Account Name: Industry'
+    }, inplace=True)
+
+    return dataframe_ordering(df)
+
+
+def clean_legacy(df):
+    cols_to_initialize = [
+        'Office Location Client Assigned to', 'Recurrence', 'Contract Duration', 'Last Activity',
+        'Next Step', 'Next Step Due Date', 'Client Code', 'Primary Campaign Source: Campaign Name',
+        'Originator Service Line', 'Opp Leader Service Line', 'Contact'
+    ]
+
+    for col in cols_to_initialize:
+        df[col] = None
+
+    # Manually renaming the columns
+    df = df.rename(columns={
+        "Data Source": "Data Source",
+        "Record ID": "Opportunity ID",
+        "Service Line Group": "Service Line Group (EA)",
+        "STAGE": "Stage",
+        "Stage Adjusted": "Stage (adjusted)",
+        "ACCOUNT_NAME": "Account Name: Account Name",
+        "OPPORTUNITY_NAME": "Opportunity Name",
+        "ESTIMATED_FEES": "First Year Fees (EA's portion)",
+        "Total Contract Value": "Total Contract Value (EA's portion)",
+        "CREATED_DATE": "Created Date",
+        "EXPECTED_CLOSE": "Close Date",
+        "ORIGINATOR": "Opportunity Originator",
+        "SALES_LEADER": "Opportunity Leader",
+        "Team": "Opportunity Team",
+        "SERVICE_LINE": "Service Lines",
+        "TYPE": "Type",
+        "INDUSTRY": "Account Name: Industry",
+    })
+
+    return dataframe_ordering(df)
+
+
+def clean_triangle(df, active=True):
+    cols_to_initialize = [
+        'Recurrence',
+        'Contract Duration',
+        'Last Activity',
+        'Next Step',
+        'Next Step Due Date',
+        'Client Code',
+        'Primary Campaign Source: Campaign Name',
+        'Originator Service Line',
+        'Opp Leader Service Line',
+        'Contact'
+    ]
+
+    for col in cols_to_initialize:
+        df[col] = None
+
+    df.rename(columns={
+        "Opp ID": "Opportunity ID",
+        "Service Line Group": "Service Line Group (EA)",
+        "Stage adjusted": "Stage (adjusted)",
+        "Account Name": "Account Name: Account Name",
+        "Account name": "Account Name: Account Name",
+        "Opp Name": "Opportunity Name",
+        "Closed Date": "Close Date",
+        "First Year Fees": "First Year Fees (EA's portion)",
+        "Total Contract Value": "Total Contract Value (EA's portion)",
+        "Originator": "Opportunity Originator",
+        "Leader": "Opportunity Leader",
+        "Team": "Opportunity Team",
+        "Service Line": "Service Lines",
+        "Industry/Segment": "Account Name: Industry",
+        "Industry Group": "Account Name: Industry",
+        "Office Location": "Office Location Client Assigned to"
+    }, inplace=True)
 
     return dataframe_ordering(df)
 
@@ -410,7 +622,7 @@ def clean_combined_adv(df, originator_list=None, active=True):
                 originator_df.to_excel(originator_list, index=False)
 
         # Merge the two dataframes on the 'Opportunity Originator' column
-        merged_df = pd.merge(
+        df = pd.merge(
             df,
             originator_df[['Opportunity Originator', 'ADV?']],
             on='Opportunity Originator',
@@ -418,13 +630,13 @@ def clean_combined_adv(df, originator_list=None, active=True):
         )
 
         # Get the list of columns
-        cols = list(merged_df.columns)
+        cols = list(df.columns)
 
         # Move 'Originator in ADV?' behind 'Opportunity Originator'
         originator_col = cols.pop(cols.index('ADV?'))
-        cols.insert(cols.index('Opportunity Originator') + 1, originator_col)
+        cols.insert(cols.index('Recurrence') + 1, originator_col)
 
-        df = merged_df[cols]
+        df = df[cols]
 
         df.loc[:, 'Stage (adjusted)'] = pd.Categorical(
             df['Stage (adjusted)'],
@@ -435,8 +647,6 @@ def clean_combined_adv(df, originator_list=None, active=True):
         df = df.sort_values(by=['Stage (adjusted)', 'Close Date'], ascending=[False, False])
 
         return df
-
-        # Convert 'Stage (adjusted)' to a categorical type with the specified order
 
     df.loc[:, 'Stage (adjusted)'] = pd.Categorical(
         df['Stage (adjusted)'],
@@ -503,5 +713,40 @@ if __name__ == "__main__":
 
         # Call the function at the end of your script
         show_report_generated_message()
+
+    if 'Outsourcing' in selected_reports:
+        # Read Gulf Coast Outsourced IT Data
+        eag_gc_oit = pd.read_excel(report_files[6])
+
+        pnt_cw_active = clean_pnt(eag_gc_oit[eag_gc_oit['Closed_Status'].isna()])
+        pnt_cw_closed = clean_pnt(
+            eag_gc_oit[
+                (~eag_gc_oit['Closed_Status'].isna()) &
+                (~eag_gc_oit['Closed_Date'].isna()) &
+                (eag_gc_oit['Closed_Date'] >= pd.Timestamp('2023-08-01')) &
+                (eag_gc_oit['Closed_Date'] <= pd.Timestamp('now'))
+                ], False
+        )
+
+        try:
+            hubspot_df = pd.read_excel(report_files[7])
+        except ValueError:
+            hubspot_df = pd.read_csv(report_files[7])
+
+        hubspot_df = clean_hubspot(hubspot_df)
+        hubspot_active = hubspot_df[~(hubspot_df['Stage (adjusted)'] == 'Closed Lost')]
+        hubspot_closed = hubspot_df[hubspot_df['Stage (adjusted)'] == 'Closed Lost']
+
+        adv_out_file = report_files[8]
+        legacy_oit_active_sheet = find_sheet_name(adv_out_file, 'Legacy OIT Active')
+        triangle_active_sheet = find_sheet_name(adv_out_file, 'Triangle Active')
+        triangle_closed_sheet = find_sheet_name(adv_out_file, 'Triangle Wins')
+
+        legacy_oit_active = clean_legacy(pd.read_excel(adv_out_file, sheet_name=legacy_oit_active_sheet))
+        triangle_active = clean_triangle(pd.read_excel(adv_out_file, sheet_name=triangle_active_sheet))
+        triangle_closed = clean_triangle(pd.read_excel(adv_out_file, sheet_name=triangle_closed_sheet))
+
+        pass
+
     else:
         print("This is all I got for now.")
