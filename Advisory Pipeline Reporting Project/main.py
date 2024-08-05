@@ -1,6 +1,8 @@
 import sys
 import warnings
 
+import pandas as pd
+
 from clean_reports import *
 import popups
 
@@ -15,7 +17,7 @@ def adv_process():
     adv_active = clean_combined_adv(all_active)
     adv_closed = clean_combined_adv(all_closed, report_files[5], False)
 
-    originator_list_df = pd.read_excel(report_files[5])
+    originator_list_df = pd.read_excel(f'{cwd}/Originators List.xlsx')
 
     file_name = f'ADV Pipeline (Updated on {date_now})'
 
@@ -89,7 +91,9 @@ def out_process():
             ], False
     )
 
-    legacy_oit = clean_legacy(pd.read_excel(report_files[8]))
+    legacy_oit = pd.read_excel(report_files[8], header=None)
+    header_row_index = legacy_oit.dropna(how='all').index[0]
+    legacy_oit = clean_legacy(pd.read_excel(report_files[8], header=header_row_index))
 
     triangle_file = report_files[9]
     triangle_active_sheet = find_sheet_name(triangle_file, 'Triangle Active')
@@ -117,13 +121,34 @@ def out_process():
             triangle_closed
         ])
 
-        out_active = clean_combined_out(out_active)
-        out_closed = clean_combined_out(out_closed)
+        out_active = clean_combined_out(out_active, report_files[5])
 
-    with pd.ExcelWriter(f'{cwd}/Out Pipeline.xlsx', engine='xlsxwriter') as writer:
+        originators_list_updated = f'{cwd}/Originators List.xlsx'
+
+        out_closed = clean_combined_out(out_closed, originators_list_updated, False)
+
+        originator_list_updated = f'{cwd}/Originators List.xlsx'
+
+        originator_list_df = pd.read_excel(originator_list_updated)
+
+    file_name = f'OUT Pipeline (Updated on {date_now})'
+
+    try:
+        os.chdir(sys._MEIPASS)
+    except AttributeError:
+        pass
+
+    with pd.ExcelWriter(f'{cwd}/{file_name}.xlsx', engine='xlsxwriter') as writer:
         # Write each dataframe to a different sheet
         out_active.to_excel(writer, sheet_name='OUT Active', index=False)
         out_closed.to_excel(writer, sheet_name='OUT Closed', index=False)
+        originator_list_df.to_excel(writer, sheet_name='Originators List', index=False)
+
+        worksheet = writer.sheets['Originators List']
+        worksheet.hide()
+
+    # Call the function at the end of script
+    show_report_generated_message(file_name, cwd)
 
 
 if __name__ == "__main__":
@@ -131,8 +156,9 @@ if __name__ == "__main__":
     report_files = popups.startup_window()
 
     # Read, cleans, and reformats Salesforce data to a Pandas dataframe
-    sf_active = clean_salesforce(pd.read_excel(report_files[0]))
-    sf_closed = clean_salesforce(pd.read_excel(report_files[1]))
+    with warnings.catch_warnings(action='ignore'):
+        sf_active = clean_salesforce(pd.read_excel(report_files[0]))
+        sf_closed = clean_salesforce(pd.read_excel(report_files[1]))
 
     # Read, clean, and NetSuite data as Pandas dataframes and returns cleaned data frame
     ns_active = clean_netsuite(pd.read_excel(report_files[2]))

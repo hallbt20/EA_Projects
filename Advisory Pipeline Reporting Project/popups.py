@@ -193,6 +193,47 @@ def prompt_adv_values(unique_originators):
     return unique_originators
 
 
+def prompt_out_values(unique_originators):
+    root = tk.Tk()
+    root.title("Fill in Outsource Values")
+
+    entries = []
+
+    def check_values():
+        all_selected = all(entry[1].get() != "Select" for entry in entries)
+        submit_button.config(state=tk.NORMAL if all_selected else tk.DISABLED)
+
+    def on_submit():
+        for entry in entries:
+            unique_originators[entry[0]]['Department (Outsourced)'] = entry[1].get()
+        root.quit()
+        root.destroy()
+
+    # Create labels and dropdowns for each unique unmatched originator
+    for i, originator in enumerate(unique_originators):
+        label = tk.Label(root, text=f"{originator}")
+        label.grid(row=i, column=0)
+        var = tk.StringVar(root)
+        var.set("Select")
+        dropdown = ttk.Combobox(
+            root,
+            textvariable=var,
+            values=['Advisory', 'Other', 'Outsourced', 'Assurance', 'Business Development', 'Tax']
+        )
+        dropdown.grid(row=i, column=1)
+        dropdown.bind("<<ComboboxSelected>>", lambda event: check_values())
+        entries.append((originator, var))
+
+    # Create a submit button, initially disabled
+    submit_button = tk.Button(root, text="Submit", command=on_submit, state=tk.DISABLED)
+    submit_button.grid(row=len(unique_originators), column=0, columnspan=2)
+
+    # Run the Tkinter main loop
+    root.mainloop()
+
+    return unique_originators
+
+
 def show_report_generated_message(file_name, cwd):
     root = tk.Tk()
     root.withdraw()  # Hide the root window

@@ -285,13 +285,18 @@ def clean_pnt(df, active=True):
         'Service_Type': 'Type',
     }, inplace=True)
 
+    df['Service Lines'] = df['Service Lines'].fillna('OIT (Unknown)')
+
     return dataframe_ordering(df)
 
 
 def clean_legacy(df):
     df['Data Source'] = 'Legacy OIT'
     df['Service Line Group'] = 'OUT'
-    df['Total Contract Value'] = df['ESTIMATED_FEES']
+    try:
+        df['Total Contract Value'] = df['ESTIMATED_FEES']
+    except KeyError:
+        pass
 
     cols_to_initialize = [
         'Office Location', 'Recurrence', 'Contract Duration', 'Last Activity', 'Next Step', 'Next Step Due Date',
@@ -437,6 +442,9 @@ def clean_combined_adv(df, originator_list=None, active=True):
             ordered=True
         )
 
+        df.loc[:, 'Created Date'] = pd.to_datetime(df['Created Date'], errors='coerce')
+        df.loc[:, 'Close Date'] = pd.to_datetime(df['Close Date'], errors='coerce')
+
         df = df.sort_values(by=['Stage (adjusted)', 'Close Date'], ascending=[False, False])
 
         return df
@@ -447,13 +455,16 @@ def clean_combined_adv(df, originator_list=None, active=True):
         ordered=True
     )
 
+    df.loc[:, 'Created Date'] = pd.to_datetime(df['Created Date'], errors='coerce')
+    df.loc[:, 'Close Date'] = pd.to_datetime(df['Close Date'], errors='coerce')
+
     # Sort the dataframe
     df = df.sort_values(by=['Stage (adjusted)', 'Created Date'], ascending=[True, False])
 
     return df
 
 
-def clean_combined_out(df, active=True):
+def clean_combined_out(df, originator_list=None, active=True):
     df.loc[:, 'Type'] = df.apply(
         lambda row: 'Renewal Business' if row['Type'] in [
             'Existing Business', 'Renewal Business', 'Renewal of Existing Business'
@@ -478,5 +489,109 @@ def clean_combined_out(df, active=True):
     df['Close Date'] = df['Close Date'].dt.strftime('%Y-%m-%d')
 
     df['Name (adjusted for pivot)'] = df['Account Name'] + ' - ' + df['Opportunity ID']
+
+    originator_df = pd.read_excel(originator_list)
+
+    df['Opportunity Originator'].fillna('', inplace=True)
+
+    df.loc[:, 'Opportunity Originator'] = df.loc[:, 'Opportunity Originator'].apply(
+        lambda x: sub(r'\s*\(.*?\)$', '', x)
+    )
+
+    names_dict = {}
+
+    # Step 1: Find names in df['Opportunity Originator'] that are not in originator_df['Full Name']
+    missing_names = list(df[~df['Opportunity Originator'].isin(originator_df['Full Name'])]['Opportunity Originator'])
+
+    for name in missing_names:
+        if name != '':
+            names_dict[name] = {'type': 'missing', 'Department (Outsourced)': None}
+
+    # Step 2: Find names in df['Opportunity Originator'] that are in originator_df['Full Name']
+    # and have a null value in originator_df['Department (Advisory Report)']
+    merged_df = df.merge(originator_df, left_on='Opportunity Originator', right_on='Full Name', how='inner')
+    found_names_null_department = list(
+        merged_df[merged_df['Department (Outsourced Report)'].isnull()]['Opportunity Originator'])
+
+    for name in found_names_null_department:
+        if name != '':
+            names_dict[name] = {'type': 'null', 'Department (Outsourced)': None}
+
+    if len(names_dict):
+        # Prompt user to determine the 'ADV?' value for each unique unmatched originator
+        new_entries = prompt_out_values(names_dict)
+
+        for name in new_entries:
+            if new_entries[name]['type'] == 'missing':
+                new_row = pd.DataFrame([{
+                    'Full Name': name,
+                    'Company': None,
+                    'Department': None,
+                    'Department (Advisory Report)': None,
+                    'Department (Outsourced Report)': new_entries[name]['Department (Outsourced)'],
+                    'Job Title': None,
+                    'Office Location': None,
+                    'Date Updated': datetime.now().strftime("%Y-%m-%d")
+                }])
+                # Adding a new row using pd.concat
+                originator_df = pd.concat([originator_df, new_row], ignore_index=True)
+            else:
+                # Update the 'Department (Outsourced Report)' for 'John Smith'
+                originator_df.loc[
+                    originator_df['Full Name'] == name, ['Department (Outsourced Report)', 'Date Updated']
+                ] = [new_entries[name]['Department (Outsourced)'], datetime.now().strftime("%Y-%m-%d")]
+
+        originator_df = originator_df.sort_values(by='Full Name').reset_index(drop=True)
+
+        try:
+            originator_df.to_excel(
+                f'Reporting Output Files (Updated {datetime.now().strftime("%Y-%m-%d")})/Originators List.xlsx',
+                index=False
+            )
+        except PermissionError:
+            root = tk.Tk()
+            root.withdraw()  # Hide the root window
+            messagebox.showerror(
+                "Permission Error",
+                "The file 'Originators List.xlsx' appears to be open. Please close the file and press OK."
+            )
+            root.destroy()
+            originator_df.to_excel(
+                f'Reporting Output Files (Updated {datetime.now().strftime("%Y-%m-%d")})/Originators List.xlsx',
+                index=False
+            )
+
+    # Merge the two dataframes on the 'Opportunity Originator' column
+    df = pd.merge(
+        df,
+        originator_df[['Full Name', 'Department (Outsourced Report)']],
+        left_on='Opportunity Originator',
+        right_on='Full Name',
+        how='left'
+    )
+
+    df.drop(columns=['Full Name'], inplace=True)
+
+    df.rename(columns={'Department (Outsourced Report)': 'Department'}, inplace=True)
+
+    if active:
+        df.loc[:, 'Stage (adjusted)'] = pd.Categorical(
+            df['Stage (adjusted)'],
+            categories=['Proposal', 'Qualified', 'Unqualified', 'Suspect'],
+            ordered=True
+        )
+
+        # Sort the dataframe
+        df = df.sort_values(by=['Stage (adjusted)', 'Created Date'], ascending=[True, False])
+
+        return df
+
+    df.loc[:, 'Stage (adjusted)'] = pd.Categorical(
+        df['Stage (adjusted)'],
+        categories=['Closed Won', 'Closed Lost'],
+        ordered=True
+    )
+
+    df = df.sort_values(by=['Stage (adjusted)', 'Close Date'], ascending=[False, False])
 
     return df
